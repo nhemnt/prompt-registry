@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.core.config import settings
 from app.core.logging import logger
-from app.api import teams_router
+from app.api import teams_router, projects_router
 from app.db.session import engine
 from app.db.base import Base
 
@@ -25,3 +25,4 @@ async def health_check():
     return {"status": "ok"}
 
 app.include_router(teams_router)
+app.include_router(projects_router)
