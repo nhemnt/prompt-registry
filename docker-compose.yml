@@ -1,0 +1,36 @@
+
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: prompt_registry_db
+    restart: always
+    environment:
+      POSTGRES_USER: hemant
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: prompt_registry
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hemant -d prompt_registry"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: prompt_registry_api
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount the current directory info /app to allow hot-reloading
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
