@@ -6,6 +6,8 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 # Ensure python output is sent straight to terminal
 ENV PYTHONUNBUFFERED=1
+# Make the /app directory importable as a Python package root
+ENV PYTHONPATH=/app
 
 # Install required system dependencies if needed
 # RUN apt-get update && apt-get install -y --no-install-recommends gcc && rm -rf /var/lib/apt/lists/*
@@ -18,4 +20,5 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Run migrations then start the server
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
