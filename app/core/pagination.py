@@ -23,7 +23,9 @@ async def paginate(
     query: Select, 
     params: PageParams
 ) -> Page[T]:
-    count_query = select(func.count()).select_from(query.subquery())
+    # Strip eager-load options (selectinload/joinedload) before subquery —
+    # they are incompatible with .subquery() and cause asyncpg prepare errors.
+    count_query = select(func.count()).select_from(query.options().subquery())
     total_result = await session.execute(count_query)
     total = total_result.scalar_one()
 

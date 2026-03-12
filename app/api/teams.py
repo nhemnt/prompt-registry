@@ -5,19 +5,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.db.session import get_db
-from app.models.entities import Teams
+from app.models.entities import Team
 from app.core.pagination import paginate, Page, PageParams
 
 router = APIRouter(prefix="/v1/teams", tags=["Teams"])
 
 
+# ---------------------------------------------------------------------------
+# Schemas
+# ---------------------------------------------------------------------------
+
 class TeamCreate(BaseModel):
     name: str
     description: str | None = None
 
+
 class TeamUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
+
 
 class TeamResponse(BaseModel):
     id: int
@@ -26,60 +32,78 @@ class TeamResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True) 
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+async def get_team_or_404(team_id: int, db: AsyncSession) -> Team:
+    result = await db.execute(select(Team).where(Team.id == team_id))
+    team = result.scalars().first()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    return team
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
 
 @router.get("/", response_model=Page[TeamResponse])
 async def get_all_teams(
     db: AsyncSession = Depends(get_db),
     page: int = Query(1, ge=1, description="Page number"),
-    size: int = Query(50, ge=1, le=100, description="Page size")
+    size: int = Query(50, ge=1, le=100, description="Page size"),
 ):
-    query = select(Teams)
+    query = select(Team)
     params = PageParams(page=page, size=size)
     return await paginate(session=db, query=query, params=params)
 
-@router.get("/{team_name}", response_model = TeamResponse)
+
+@router.get("/{team_name}", response_model=TeamResponse)
 async def get_team(team_name: str, db: AsyncSession = Depends(get_db)):
-    query = select(Teams).where(Teams.name == team_name)
-    result = await db.execute(query)
-    return result.scalars().first()
-    
-@router.post("/", response_model=TeamResponse)
+    result = await db.execute(select(Team).where(Team.name == team_name))
+    team = result.scalars().first()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    return team
+
+
+@router.post("/", response_model=TeamResponse, status_code=201)
 async def create_team(team: TeamCreate, db: AsyncSession = Depends(get_db)):
-    query = select(Teams).where(Teams.name == team.name)
-    result = await db.execute(query)
+    result = await db.execute(select(Team).where(Team.name == team.name))
     if result.scalars().first():
-        raise HTTPException(status_code=400, detail="Team name already exists")
-    
-    new_team = Teams(name=team.name, description=team.description)
+        raise HTTPException(status_code=409, detail="Team name already exists")
+
+    new_team = Team(name=team.name, description=team.description)
     db.add(new_team)
     await db.commit()
     await db.refresh(new_team)
     return new_team
 
-@router.put("/{team_id}", response_model=TeamResponse)
+
+@router.patch("/{team_id}", response_model=TeamResponse)
 async def update_team(team_id: int, team: TeamUpdate, db: AsyncSession = Depends(get_db)):
-    query = select(Teams).where(Teams.id == team_id)
-    result = await db.execute(query)
-    existing_team = result.scalars().first()
-    
-    if not existing_team:
-        raise HTTPException(status_code=404, detail="Team not found")
-        
+    existing_team = await get_team_or_404(team_id, db)
+
     if team.name is not None and team.name != existing_team.name:
-        name_query = select(Teams).where(Teams.name == team.name)
-        name_result = await db.execute(name_query)
+        name_result = await db.execute(select(Team).where(Team.name == team.name))
         if name_result.scalars().first():
-            raise HTTPException(status_code=400, detail="Team name already exists")
+            raise HTTPException(status_code=409, detail="Team name already exists")
         existing_team.name = team.name
-        
+
     if team.description is not None:
         existing_team.description = team.description
-        
+
     await db.commit()
     await db.refresh(existing_team)
     return existing_team
 
-# @router.delete("/{team_id}")
-# async def delete_team(team_id: int):
-#     return {"message": f"Delete Team {team_id}"}
+
+@router.delete("/{team_id}", status_code=204)
+async def delete_team(team_id: int, db: AsyncSession = Depends(get_db)):
+    team = await get_team_or_404(team_id, db)
+    await db.delete(team)
+    await db.commit()
